@@ -16,7 +16,8 @@ idna==3.10
 inflection==0.5.1
 packaging==24.2
 pillow==11.1.0
-psycopg2==2.9.10
+# psycopg2==2.9.10
+psycopg2-binary==2.9.10
 pycparser==2.22
 PyJWT==2.10.1
 python-decouple==3.8
@@ -28,3 +29,4 @@ tzdata==2025.2
 uritemplate==4.1.1
 urllib3==2.3.0
 whitenoise==6.8.2
+psycopg2-binary==2.9.10

@@ -36,7 +36,7 @@ urlpatterns = [
 
     
     # All users ---------------------------------------
-    path('userz',AllUserView.as_view(),name='all users')
+    # path('userz',AllUserView.as_view(),name='all users')
     
     
 ]

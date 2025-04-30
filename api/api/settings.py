@@ -61,7 +61,8 @@ SIMPLE_JWT = {
 
 # Application definition
 
-AUTH_USER_MODEL = 'profiles.User'
+# AUTH_USER_MODEL = 'profiles.User'
+AUTH_USER_MODEL = 'user.User'
 
 INSTALLED_APPS = [
     'corsheaders',
@@ -75,7 +76,9 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
-    'drf_yasg'
+    'drf_yasg',
+    
+    'user',    
 ]
 
 MIDDLEWARE = [
@@ -147,7 +150,7 @@ tmpPostgres = urlparse(config("DATABASE_URL"))
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql' if is_production else 'django.db.backends.sqlite3',
-        'NAME': tmpPostgres.path.replace('/', '') if is_production else BASE_DIR / 'tibERbu.db',
+        'NAME': tmpPostgres.path.replace('/', '') if is_production else BASE_DIR / 'server.db',
         'USER': tmpPostgres.username if is_production else '',
         'PASSWORD': tmpPostgres.password if is_production else '',
         'HOST': tmpPostgres.hostname if is_production else '',
