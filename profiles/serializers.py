@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.hashers import make_password
 from django.core.validators import RegexValidator
-from .models import User, UserImage,Gender,UserRole,UserStatus
+from .models import *
 
 
 class UserSerializer2(serializers.ModelSerializer):
@@ -59,7 +59,7 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         # fields = '__all__'
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'role', 'status', 'date_of_birth', 'gender']
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'role', 'status', 'birth_date' ]
 
 
         

@@ -23,7 +23,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 is_production = config('ENVIRONMENT', default="development") == 'production'
 
 FRONTEND_URL = config("FRONTEND_URL")
-print(is_production)
+# print(is_production)
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -61,8 +61,7 @@ SIMPLE_JWT = {
 
 # Application definition
 
-# AUTH_USER_MODEL = 'profiles.User'
-AUTH_USER_MODEL = 'user.User'
+AUTH_USER_MODEL = 'profiles.user'
 
 INSTALLED_APPS = [
     'corsheaders',
@@ -77,8 +76,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'drf_yasg',
-    
-    'user',    
+    'profiles',    
 ]
 
 MIDDLEWARE = [
@@ -121,7 +119,7 @@ ALLOWED_HOSTS = ['stevenene.vercel.com', "localhost", "127.0.0.1"]
 
 
 
-ROOT_URLCONF = 'api.urls'
+ROOT_URLCONF = 'settings.urls'
 
 TEMPLATES = [
     {
@@ -139,7 +137,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'api.wsgi.application'
+WSGI_APPLICATION = 'settings.wsgi.application'
 
 
 # Database

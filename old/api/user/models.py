@@ -56,3 +56,13 @@ class User(AbstractBaseUser, TimeStampedModel):
 
     def has_module_perms(self, app_label):
         return self.is_admin
+    
+class rofilrs(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    first_name = models.CharField(max_length=30)
+    last_name = models.CharField(max_length=30)
+    phone_number = models.CharField(max_length=15, blank=True, null=True)
+    address = models.TextField(blank=True, null=True)
+    
+    def __str__(self):
+        return self.user.email

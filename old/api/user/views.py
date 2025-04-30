@@ -1,6 +1,6 @@
 from django.shortcuts import render
 from .models import User
-from .serializers import *
+from ....profiles.serializers import *
 
 from rest_framework import status, viewsets
 
