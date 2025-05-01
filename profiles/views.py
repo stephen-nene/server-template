@@ -1,14 +1,17 @@
-from django.shortcuts import render
+from django.shortcuts import render,get_object_or_404
 from .models import User
 from .serializers import *
 from django.views import View
 from django.http import JsonResponse
+from django.db.models import Q
 
 from rest_framework import status, viewsets
 
 from rest_framework_simplejwt.exceptions import AuthenticationFailed, TokenError
 from rest_framework_simplejwt.views import TokenObtainPairView,TokenVerifyView,TokenRefreshView,TokenBlacklistView
-# from rest_framework_simplejwt.tokens import RefreshToken,AccessToken
+from rest_framework_simplejwt.tokens import RefreshToken,AccessToken,UntypedToken, OutstandingToken
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
+
 from rest_framework_simplejwt.settings import api_settings
 
 # from rest_framework.exceptions import AuthenticationFailed
@@ -17,6 +20,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.generics import RetrieveAPIView
 
+from .services.emails import send_login_notification,send_welcome_email
+
 
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
@@ -24,13 +29,36 @@ from drf_yasg import openapi
 import jwt
 import requests
 import time
-from django.contrib.auth import get_user_model
+from django.utils import timezone
 
+from django.contrib.auth import get_user_model
+from datetime import datetime, timedelta
+from urllib.parse import urlencode
+import httpagentparser
 
 from django.conf import settings
 
 # Create your views here.
 
+def generate_activation_url(user,type='activation'):
+    payload = {
+        'user_id': user.id,
+        'exp': datetime.now() + timedelta(hours=24),
+        'type': type,
+        'jti': str(user.id) + "_activation"  # Include a custom `jti` here (can be anything unique)
+
+    }
+    token = jwt.encode(payload, settings.SECRET_KEY, algorithm='HS256')
+    base_url = settings.FRONTEND_URL  # e.g. https://example.com/signup
+    query_string = urlencode({'token': token})
+    return f"{base_url}/activate/?{query_string}"
+
+
+def get_client_ip( request):
+        x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+        if x_forwarded_for:
+            return x_forwarded_for.split(',')[0]
+        return request.META.get("REMOTE_ADDR")
 class FunnyAPIView(APIView):
     """
     A view that provides various types of funny content.
@@ -230,58 +258,120 @@ class CustomeTokenBlacklistView(TokenBlacklistView):
     def post(self, request, *args, **kwargs):
         return super().post(request, *args, **kwargs)
 # Login
+
 class CustomTokenObtainPairView(TokenObtainPairView):
     """
-    Extends TokenObtainPairView to also return user data along with the token.
+    Custom token view that extends TokenObtainPairView to:
+    - Support login with email, username, or phone number
+    - Return user data along with tokens
+    - Track login attempts and send notifications
+    - Provide detailed error messages
     """
+
     @swagger_auto_schema(
-        operation_summary="Obtain a JWT token pair",
-        operation_description="Returns a JWT token pair along with the user information.",
+        operation_summary="Login to obtain JWT token pair",
+        operation_description="Authenticate user and return JWT tokens with user info",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
+            required=['identifier', 'password'],
             properties={
-                'username': openapi.Schema(type=openapi.TYPE_STRING, description="Username"),
-                'password': openapi.Schema(type=openapi.TYPE_STRING, description="Password"),
-            }        
+                'identifier': openapi.Schema(
+                    type=openapi.TYPE_STRING, 
+                    description="Email, username or phone number"
+                ),
+                'password': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="User password"
+                ),
+            }
         ),
         responses={
             200: openapi.Response(
-                description="Token pair and user information",
+                description="Login successful",
                 schema=openapi.Schema(
                     type=openapi.TYPE_OBJECT,
                     properties={
-                        'access_token': openapi.Schema(type=openapi.TYPE_STRING, description="Access token"),
-                        'refresh_token': openapi.Schema(type=openapi.TYPE_STRING, description="Refresh token"),
-                        'user_info': openapi.Schema(
-                            type=openapi.TYPE_OBJECT,
-                            properties={
-                                'id': openapi.Schema(type=openapi.TYPE_INTEGER, description="User ID"),
-                                'username': openapi.Schema(type=openapi.TYPE_STRING, description="Username"),
-                                'email': openapi.Schema(type=openapi.TYPE_STRING, description="Email"),
-                            }
-                        )
+                        'access_token': openapi.Schema(type=openapi.TYPE_STRING),
+                        'refresh_token': openapi.Schema(type=openapi.TYPE_STRING),
+                        'user_info': openapi.Schema(type=openapi.TYPE_OBJECT)
                     }
                 )
-            )
+            ),
+            401: "Invalid credentials",
+            400: "Bad request"
         },
         tags=["Auth"]
-        
-        
     )
     def post(self, request, *args, **kwargs):
-        # First, call the original post method to get the token
-        response = super().post(request, *args, **kwargs)
-        
-        # After obtaining the token, get the user information
-        user = request.user
-        user_data = UserSerializer(user).data  # Serialize the user data
-        
-        # Return the token along with user info
-        return Response({
-            'access_token': response.data['access'],
-            'refresh_token': response.data['refresh'],
-            'user_info': user_data
-        }, status=status.HTTP_200_OK)
+        identifier = request.data.get("identifier")
+        password = request.data.get("password")
+
+        if not identifier or not password:
+            return Response(
+                {"error": "Both identifier and password are required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Find user by email, username or phone
+                    # Try to find user by identifier
+            user = User.objects.filter(
+                Q(email=identifier) | Q(username=identifier) | Q(phone_number=identifier)
+            ).first()
+
+            if user is None:
+                return Response(
+                    {"error": "No user found with that email, username, or phone number."}, 
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+
+            if not user.check_password(password):
+                return Response(
+                    {"error": "Password is incorrect."},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+
+            if not user.is_active:
+                return Response(
+                    {"error": "This account is inactive"}, 
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+
+            # Get the JWT tokens
+            # response = super().post(request, *args, **kwargs)
+            refresh = RefreshToken.for_user(user)
+
+            # Get login metadata
+            ip = get_client_ip(request)
+            user_agent = request.META.get("HTTP_USER_AGENT", "Unknown")
+            parsed = httpagentparser.detect(user_agent)
+            browser = parsed.get("browser", {}).get("name", "Unknown")
+            os = parsed.get("os", {}).get("name", "Unknown")
+
+            # Send login notification
+            send_login_notification(user, ip, user_agent, browser, os)
+
+            # Update last login info
+            user.last_login_ip = ip
+            user.save(update_fields=['last_login_ip'])
+
+            # Return response with tokens and user data
+            return Response({
+                "access_token": str(refresh.access_token),
+                "refresh_token": str(refresh),
+                'user_info': UserSerializer(user).data
+            }, status=status.HTTP_200_OK)
+
+        except User.DoesNotExist:
+            return Response(
+                {"error": "Invalid credentials"}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        except Exception as e:
+            return Response(
+                {"error": "Login failed", "detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
 class MeView(APIView):
     """
@@ -308,10 +398,62 @@ class MeView(APIView):
         else:
             return Response({"detail": "Authentication credentials were not provided."}, status=status.HTTP_401_UNAUTHORIZED)
 
+class ResendActivationView(APIView):
+    permission_classes = [AllowAny]
+    
+    @swagger_auto_schema(
+        operation_summary="Resend activation email",
+        operation_description="Resends the activation email to the user.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'email': openapi.Schema(type=openapi.TYPE_STRING, description="User email"),
+            }
+        ),
+        responses={
+            200: openapi.Response(
+                description="Activation email resent successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'detail': openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            )
+        },
+        tags=["Auth"]
+    )
+    def post(self, request):
+        # Scenario 1: Check if the user is authenticated via token in the header
+        user = None
+        if request.user.is_authenticated:
+            # If the user is authenticated, we use the authenticated user
+            user = request.user
+        else:
+            # Scenario 2: If no token is provided, fall back to the email provided in the body
+            email = request.data.get("email")
+            if not email:
+                return Response({"detail": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                user = User.objects.get(email=email)
+            except User.DoesNotExist:
+                return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if user.email_verified:
+            return Response({"detail": "Email already verified."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Generate activation URL and send activation email
+        activation_url = generate_activation_url(user, "activation")
+        send_welcome_email(user, activation_url)
+
+        return Response({"detail": "Activation email resent."}, status=status.HTTP_200_OK)
+
+
 class UserCreateView(APIView):
     # will have a create an get. get will be used to actiavte a user account using the token
     # create will be used to create a new user
     permission_classes = [AllowAny]
+    
     @swagger_auto_schema(
         operation_summary="Create a new user",
         operation_description="Creates a new user with the provided information.",
@@ -334,12 +476,44 @@ class UserCreateView(APIView):
         },
         tags=["Auth",'users']
     )
+    
     def post(self, request):
-        serializer = UserSerializer(data=request.data)
+        serializer = UserSerializer2(data=request.data)
         if serializer.is_valid():
+            
+
             # send a welcome email here
-            # send_activation_email(user)
-            user = serializer.save()
+            # send_activation_email(user, activation_url)
+            serializer = UserSerializer2(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            
+            # Check for existing users case-insensitively
+            # email = serializer.validated_data['email'].lower()
+            # username = serializer.validated_data['username'].lower()
+            
+            # if User.objects.filter(Q(email__iexact=email) | Q(username__iexact=username)).exists():
+            #     return Response(
+            #         {"detail": "User with this email or username already exists."},
+            #         status=status.HTTP_409_CONFLICT
+            #     )
+
+            # Create inactive user until email verification
+            user = serializer.save(
+                is_active=False,
+                email_verified=False,
+                status=UserStatus.PENDING
+            )
+             # Attempt to send activation email
+            activation_url = generate_activation_url(user)
+            try:
+                send_welcome_email(user, activation_url)
+            except Exception as e:
+                # Log error, or return with warning
+                return Response({
+                    "message": "User created, but email sending failed.",
+                    "user": UserSerializer(user).data,
+                    "error": str(e)
+                }, status=status.HTTP_201_CREATED)
             return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     # will get a token in the url to activate the user account related with it
@@ -369,27 +543,59 @@ class UserCreateView(APIView):
     
     def get(self,request):        
         token = request.query_params.get('token')
+        if not token:
+            return Response({"detail": "Activation Token is required."}, status=status.HTTP_400_BAD_REQUEST)
         try:
             payload  = jwt.decode(token, settings.SECRET_KEY, algorithms=[api_settings.ALGORITHM])
 
             user_id = payload.get('user_id')
             if user_id is None:
                 return Response({"detail": "Invalid token payload."}, status=status.HTTP_400_BAD_REQUEST)
-            user = User.objects.get(id=user_id)
-            if not user.is_active:
-                user.is_active = True
-                user.email_verified = True
-                user.save()
-                return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
-            return Response({"detail": "User is already active."}, status=status.HTTP_400_BAD_REQUEST)
+            user = get_object_or_404(User, id=user_id)
+            
+            if user.email_verified:
+                return Response({"detail": "User is already active."}, status=status.HTTP_400_BAD_REQUEST)
+            
+           
+            user.is_active = True
+            user.email_verified = True
+            user.status = UserStatus.ACTIVE
+            user.save()
+            
+            self.blacklist_token(token)
+
+            return Response({
+                "detail": "User activated successfully.",
+                "user": UserSerializer(user).data
+            }, status=status.HTTP_200_OK)
+            # return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
+            # return Response({"detail": "User is already active."}, status=status.HTTP_400_BAD_REQUEST)
         except jwt.ExpiredSignatureError:
-            return Response({"detail": "Token has expired."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Activation token has expired."}, status=status.HTTP_400_BAD_REQUEST)
         except jwt.DecodeError as e:
-            return Response({"detail": "Invalid token.", "info":str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except User.DoesNotExist:
-            return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "Invalid activation token.", "info":str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        # except User.DoesNotExist:
+        #     return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def blacklist_token(self, token):
+        """
+        Blacklist the token after it has been used for activation.
+        """
+        try:
+            untoken = UntypedToken(token)  # This will decode the token and validate it
+            outstanding_token = OutstandingToken.objects.get(token=untoken)  # Get the OutstandingToken instance
+            BlacklistedToken.objects.create(
+                token=outstanding_token,
+                blacklisted_at=timezone.now()
+            )
+        except OutstandingToken.DoesNotExist:
+            print(f"Error: Token not found in OutstandingToken table.")
+            return Response({"detail": "Token not found in OutstandingToken table."}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            print(f"Error blacklisting token: {str(e)}")
+            return Response({"detail": "Error blacklisting token.", "info": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 class UserProfileView(RetrieveAPIView):
     serializer_class = UserSerializer
@@ -474,7 +680,7 @@ class UserViewSet(viewsets.ModelViewSet):
     * `update`: Updates the specified user.
     * `destroy`: Deletes the specified user.
     """
-    queryset = User.objects.all()
+    queryset = User.objects.all().order_by('-created_at')
     serializer_class = UserSerializer
 
     # -------------------------
