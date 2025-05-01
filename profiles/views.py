@@ -450,7 +450,7 @@ class ResendActivationView(APIView):
 
 
 class UserCreateView(APIView):
-    # will have a create an get. get will be used to actiavte a user account using the token
+    # will have a create an get. get will be used to activate a user account using the token
     # create will be used to create a new user
     permission_classes = [AllowAny]
     
@@ -546,7 +546,7 @@ class UserCreateView(APIView):
         if not token:
             return Response({"detail": "Activation Token is required."}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            payload  = jwt.decode(token, settings.SECRET_KEY, algorithms=[api_settings.ALGORITHM])
+            payload  = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
 
             user_id = payload.get('user_id')
             if user_id is None:
