@@ -11,12 +11,15 @@ class UserSerializer2(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'username', 'first_name', 'last_name', 'email',
-            'phone_number', 'password', 'status', 'role', 'date_of_birth',
-            'gender', 'address', 'profile_image', 'mfa_enabled'
+            'phone_number', 'password', 'status', 'role', 'birth_date',
+            'gender', 'address', 'profile', 'avatar_url', 'bio'
         ]
 
     def create(self, validated_data):
         try:
+            self.validate_phone_number(validated_data['phone_number'])
+            # self.validate_role(validated_data['role'])
+            # self.validate_status(validated_data['status'])
             validated_data['password'] = make_password(validated_data['password'])
             return super().create(validated_data)
         except Exception as e:

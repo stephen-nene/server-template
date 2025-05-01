@@ -29,6 +29,8 @@ urlpatterns = [
     # path('auth/verify/', TokenVerifyViewExtended.as_view(), name='token_verify'),
 
     path('auth/signup', UserCreateView.as_view(), name='signup'),
+    path('auth/activate/resend', ResendActivationView.as_view(), name='resend_activation_email'),
+    
     # path('auth/forgot', ForgotPasswordView.as_view(), name='forgot_password'),
     # path('auth/reset', ResetPasswordView.as_view(), name='reset_password'),
     
