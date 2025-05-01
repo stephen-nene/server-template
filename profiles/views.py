@@ -11,6 +11,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView,TokenVerifyView
 from rest_framework_simplejwt.tokens import RefreshToken,AccessToken
 # from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 
 from drf_yasg.utils import swagger_auto_schema
@@ -24,10 +25,9 @@ from django.contrib.auth import get_user_model
 
 from django.conf import settings
 
-
 # Create your views here.
 
-class FunnyAPIView(View):
+class FunnyAPIView(APIView):
     """
     A view that provides various types of funny content.
     """
@@ -180,9 +180,10 @@ class FunnyAPIView(View):
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return Response({
-            "message": "Welcome to the ultimate API of chaos!",
-            "status": "🔥 Ready to roll!",
-            **content
+            "status": "100% 🔥 Ready to roll!",
+            # "message": "Welcome to the ultimate API of chaos!",
+            **content,
+            "DIY":"url/?type=chuck_norris"
         })
 
 class CustomTokenObtainPairView(TokenObtainPairView):
