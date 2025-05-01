@@ -17,6 +17,13 @@ class UserRole(models.TextChoices):
     ADMIN = 'admin', _('Admin')
     USER = 'user', _('User')
     MODERATOR = 'moderator', _('Moderator')
+    
+class UserGender(models.TextChoices):
+    MALE = 'male', _('Male')
+    FEMALE = 'female', _('Female')
+    NON_BINARY = 'non_binary', _('Non-binary')
+    TRANSGENDER = 'transgender', _('Transgender')
+    OTHER = 'other', _('Other')
 
 
 # Abstract Timestamped Model
@@ -71,8 +78,11 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     last_name = models.CharField(_('last name'), max_length=150, blank=True)
     phone_number = models.CharField(_('phone number'), max_length=20, blank=True)
     bio = models.TextField(_('bio'), blank=True)
+    profile = models.FileField(_('profile picture'), upload_to='profiles/', blank=True)
     avatar_url = models.URLField(_('avatar URL'), blank=True)
     birth_date = models.DateField(_('birth date'), null=True, blank=True)
+    address = models.JSONField(_('address'), null=True, blank=True)
+    gender = models.CharField(_('gender'), max_length=20, choices=UserGender.choices, blank=True)
     email_verified = models.BooleanField(_('email verified'), default=False)
     last_login_ip = models.GenericIPAddressField(_('last login IP'), null=True, blank=True)
 
