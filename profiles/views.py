@@ -7,8 +7,9 @@ from django.http import JsonResponse
 from rest_framework import status, viewsets
 
 from rest_framework_simplejwt.exceptions import AuthenticationFailed, TokenError
-from rest_framework_simplejwt.views import TokenObtainPairView,TokenVerifyView
-from rest_framework_simplejwt.tokens import RefreshToken,AccessToken
+from rest_framework_simplejwt.views import TokenObtainPairView,TokenVerifyView,TokenRefreshView,TokenBlacklistView
+# from rest_framework_simplejwt.tokens import RefreshToken,AccessToken
+from rest_framework_simplejwt.settings import api_settings
 
 # from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import IsAuthenticated,AllowAny
@@ -180,6 +181,54 @@ class FunnyAPIView(APIView):
         })
 
 
+class CustomTokenRefreshView(TokenRefreshView):
+    @swagger_auto_schema(
+        operation_summary="Refresh a JWT token",
+        operation_description="Returns a new JWT token pair using the refresh token.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'refresh_token': openapi.Schema(type=openapi.TYPE_STRING, description="Refresh token"),
+            }
+        ),
+        responses={
+            200: openapi.Response(
+                description="New token pair",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'access_token': openapi.Schema(type=openapi.TYPE_STRING, description="New access token"),
+                        'refresh_token': openapi.Schema(type=openapi.TYPE_STRING, description="New refresh token"),
+                    }
+                )
+            )
+        },
+        tags=["Auth"]
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+    
+class CustomeTokenBlacklistView(TokenBlacklistView):
+    """
+    Custom view to handle token blacklisting.
+    """
+    @swagger_auto_schema(
+        operation_summary="Blacklist a JWT token",
+        operation_description="Blacklists the provided refresh token.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'refresh_token': openapi.Schema(type=openapi.TYPE_STRING, description="Refresh token"),
+            }
+        ),
+        responses={
+            205: "Token blacklisted successfully",
+            400: "Invalid token or already blacklisted"
+        },
+        tags=["Auth"]
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
 # Login
 class CustomTokenObtainPairView(TokenObtainPairView):
     """
@@ -214,7 +263,9 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                     }
                 )
             )
-        }
+        },
+        tags=["Auth"]
+        
         
     )
     def post(self, request, *args, **kwargs):
@@ -257,6 +308,89 @@ class MeView(APIView):
         else:
             return Response({"detail": "Authentication credentials were not provided."}, status=status.HTTP_401_UNAUTHORIZED)
 
+class UserCreateView(APIView):
+    # will have a create an get. get will be used to actiavte a user account using the token
+    # create will be used to create a new user
+    permission_classes = [AllowAny]
+    @swagger_auto_schema(
+        operation_summary="Create a new user",
+        operation_description="Creates a new user with the provided information.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'username': openapi.Schema(type=openapi.TYPE_STRING, description="Username"),
+                'email': openapi.Schema(type=openapi.TYPE_STRING, description="Email"),
+                'password': openapi.Schema(type=openapi.TYPE_STRING, description="Password"),
+                
+            }
+        ),
+        responses={
+            201: openapi.Response(
+                description="User created successfully",
+                schema=UserSerializer()
+            ),
+            400: "Invalid data"
+            
+        },
+        tags=["Auth",'users']
+    )
+    def post(self, request):
+        serializer = UserSerializer(data=request.data)
+        if serializer.is_valid():
+            # send a welcome email here
+            # send_activation_email(user)
+            user = serializer.save()
+            return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    # will get a token in the url to activate the user account related with it
+    
+    @swagger_auto_schema(
+        operation_summary="Activate a user account",
+        operation_description="Activates the user account associated with the provided token.",
+        manual_parameters=[
+            openapi.Parameter(
+                'token',
+                openapi.IN_QUERY,
+                description="Activation token",
+                type=openapi.TYPE_STRING,
+                required=True
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="User account activated successfully",
+                schema=UserSerializer()
+            ),
+            400: "Invalid token",
+            404: "User not found"
+        } ,       
+        tags=["Auth"]
+    )
+    
+    def get(self,request):        
+        token = request.query_params.get('token')
+        try:
+            payload  = jwt.decode(token, settings.SECRET_KEY, algorithms=[api_settings.ALGORITHM])
+
+            user_id = payload.get('user_id')
+            if user_id is None:
+                return Response({"detail": "Invalid token payload."}, status=status.HTTP_400_BAD_REQUEST)
+            user = User.objects.get(id=user_id)
+            if not user.is_active:
+                user.is_active = True
+                user.email_verified = True
+                user.save()
+                return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
+            return Response({"detail": "User is already active."}, status=status.HTTP_400_BAD_REQUEST)
+        except jwt.ExpiredSignatureError:
+            return Response({"detail": "Token has expired."}, status=status.HTTP_400_BAD_REQUEST)
+        except jwt.DecodeError as e:
+            return Response({"detail": "Invalid token.", "info":str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except User.DoesNotExist:
+            return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
 class UserProfileView(RetrieveAPIView):
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
@@ -290,7 +424,7 @@ class TokenVerifyViewExtended(TokenVerifyView):
 
         try:
             # Decode the JWT token
-            decoded_token = jwt.decode(token, settings.SECRET_KEY, algorithms=[api_settings.JWT_ALGORITHM])
+            decoded_token = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
 
             # Check if token is expired or invalid
             if 'exp' in decoded_token and decoded_token['exp'] < int(time.time()):
