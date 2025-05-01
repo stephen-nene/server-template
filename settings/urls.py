@@ -28,9 +28,9 @@ from django.conf import settings
 
 schema_view = get_schema_view(
    openapi.Info(
-      title="tibERbu API",
+      title="Django Server API",
       default_version='v1',
-      description="API documentation for tibERbu hospital management System",
+      description="API documentation for a Django server, with basic authentication and user management",
       terms_of_service="https://stevenene.vercel.app",
       contact=openapi.Contact(email="stevekid705@gmail.com"),
       license=openapi.License(name="MIT License"),

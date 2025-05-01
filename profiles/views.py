@@ -247,7 +247,7 @@ class MeView(APIView):
             ),
             401: "Unauthorized"
         },
-        tags=["users"]
+        tags=["Auth"]
     )
     def get(self, request):
         user = request.user
@@ -260,6 +260,20 @@ class MeView(APIView):
 class UserProfileView(RetrieveAPIView):
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_summary="Get user profile",
+        operation_description="Returns the profile information of the specified user.",
+        responses={
+            200: openapi.Response(
+                description="User profile information",
+                schema=UserSerializer()
+            ),
+            404: "User not found",
+            401: "Unauthorized"
+        },
+        tags=["Auth"]
+    )
 
     def get_object(self):
         return self.request.user
