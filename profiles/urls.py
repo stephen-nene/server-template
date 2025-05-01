@@ -12,8 +12,9 @@ router.register(r'users', UserViewSet, basename='user')
 urlpatterns = [
     path('', include(router.urls)),
     
-        # Authentication routes ----------------------------
-    # path('auth/me', MeView.as_view(), name='me'),  # Logged-in user info route
+    # Authentication routes ----------------------------
+    path('auth/me', MeView.as_view(), name='me'),  # Logged-in user info route
+    path('auth/me2', UserProfileView.as_view(), name='me_update'),  # Update logged-in user info route
     # path('auth/loginn', CustomLoginView.as_view(), name='login'),  # JWT login
     # path('auth/signup', UserCreateView.as_view(), name='signup'),
     # path('auth/logout', LogoutView.as_view(), name='logout'),

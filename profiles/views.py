@@ -9,9 +9,12 @@ from rest_framework import status, viewsets
 from rest_framework_simplejwt.exceptions import AuthenticationFailed, TokenError
 from rest_framework_simplejwt.views import TokenObtainPairView,TokenVerifyView
 from rest_framework_simplejwt.tokens import RefreshToken,AccessToken
+
 # from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.permissions import IsAuthenticated,AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.generics import RetrieveAPIView
 
 
 from drf_yasg.utils import swagger_auto_schema
@@ -31,17 +34,7 @@ class FunnyAPIView(APIView):
     """
     A view that provides various types of funny content.
     """
-    # swagger docs here
-    @swagger_auto_schema(
-        operation_summary="Get a random funny content.",
-        operation_description="Fetches a random Chuck Norris joke, dad joke, meme, programming joke, or inspirational quote.",
-        responses={
-            200: "Returns a random funny content.",
-            400: "Bad request or invalid parameters.",
-            500: "Internal server error.",
-        },
-        tags=["Fun"],
-    )
+    permission_classes = [AllowAny]
     def get_chuck_norris_joke(self):
         """Fetch a random Chuck Norris joke."""
         try:
@@ -186,7 +179,44 @@ class FunnyAPIView(APIView):
             "DIY":"url/?type=chuck_norris"
         })
 
+
+# Login
 class CustomTokenObtainPairView(TokenObtainPairView):
+    """
+    Extends TokenObtainPairView to also return user data along with the token.
+    """
+    @swagger_auto_schema(
+        operation_summary="Obtain a JWT token pair",
+        operation_description="Returns a JWT token pair along with the user information.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'username': openapi.Schema(type=openapi.TYPE_STRING, description="Username"),
+                'password': openapi.Schema(type=openapi.TYPE_STRING, description="Password"),
+            }        
+        ),
+        responses={
+            200: openapi.Response(
+                description="Token pair and user information",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'access_token': openapi.Schema(type=openapi.TYPE_STRING, description="Access token"),
+                        'refresh_token': openapi.Schema(type=openapi.TYPE_STRING, description="Refresh token"),
+                        'user_info': openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                'id': openapi.Schema(type=openapi.TYPE_INTEGER, description="User ID"),
+                                'username': openapi.Schema(type=openapi.TYPE_STRING, description="Username"),
+                                'email': openapi.Schema(type=openapi.TYPE_STRING, description="Email"),
+                            }
+                        )
+                    }
+                )
+            )
+        }
+        
+    )
     def post(self, request, *args, **kwargs):
         # First, call the original post method to get the token
         response = super().post(request, *args, **kwargs)
@@ -202,7 +232,38 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             'user_info': user_data
         }, status=status.HTTP_200_OK)
     
+class MeView(APIView):
+    """
+    View to get the current user's information.
+    """
+    permission_classes = [IsAuthenticated]
+    @swagger_auto_schema(
+        operation_summary="Get current user information",
+        operation_description="Returns the information of the currently authenticated user.",
+        responses={
+            200: openapi.Response(
+                description="User information",
+                schema=UserSerializer()
+            ),
+            401: "Unauthorized"
+        },
+        tags=["users"]
+    )
+    def get(self, request):
+        user = request.user
+        if user.is_authenticated:
+            user_data = UserSerializer(user).data
+            return Response(user_data, status=status.HTTP_200_OK)
+        else:
+            return Response({"detail": "Authentication credentials were not provided."}, status=status.HTTP_401_UNAUTHORIZED)
 
+class UserProfileView(RetrieveAPIView):
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
+       
 class TokenVerifyViewExtended(TokenVerifyView):
     """
     Extends TokenVerifyView to also return user data along with the token's validity.
