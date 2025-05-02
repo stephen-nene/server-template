@@ -15,7 +15,7 @@ from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 from rest_framework_simplejwt.settings import api_settings
 
 # from rest_framework.exceptions import AuthenticationFailed
-from rest_framework.permissions import IsAuthenticated,AllowAny
+from rest_framework.permissions import IsAuthenticated,AllowAny,IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.generics import RetrieveAPIView
@@ -331,11 +331,11 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                     status=status.HTTP_401_UNAUTHORIZED
                 )
 
-            if not user.is_active:
-                return Response(
-                    {"error": "This account is inactive"}, 
-                    status=status.HTTP_401_UNAUTHORIZED
-                )
+            # if not user.is_active:
+            #     return Response(
+            #         {"error": "This account is inactive"}, 
+            #         status=status.HTTP_401_UNAUTHORIZED
+            #     )
 
             # Get the JWT tokens
             # response = super().post(request, *args, **kwargs)
@@ -399,7 +399,7 @@ class MeView(APIView):
             return Response({"detail": "Authentication credentials were not provided."}, status=status.HTTP_401_UNAUTHORIZED)
 
 class ResendActivationView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
     
     @swagger_auto_schema(
         operation_summary="Resend activation email",
@@ -499,7 +499,7 @@ class UserCreateView(APIView):
 
             # Create inactive user until email verification
             user = serializer.save(
-                is_active=False,
+                is_active=True,
                 email_verified=False,
                 status=UserStatus.PENDING
             )
