@@ -20,7 +20,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.generics import RetrieveAPIView
 
-from .services.emails import send_login_notification,send_welcome_email
+from .services.emails import send_login_notification,send_welcome_email,send_email_verification
 
 
 from drf_yasg.utils import swagger_auto_schema
@@ -37,6 +37,10 @@ from urllib.parse import urlencode
 import httpagentparser
 
 from django.conf import settings
+
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode
+from django.utils.encoding import force_bytes
 
 # Create your views here.
 
@@ -59,6 +63,24 @@ def get_client_ip( request):
         if x_forwarded_for:
             return x_forwarded_for.split(',')[0]
         return request.META.get("REMOTE_ADDR")
+
+def blacklist_token( token):
+        """
+        Blacklist the token after it has been used for activation.
+        """
+        try:
+            untoken = UntypedToken(token)  # This will decode the token and validate it
+            outstanding_token = OutstandingToken.objects.get(token=untoken)  # Get the OutstandingToken instance
+            BlacklistedToken.objects.create(
+                token=outstanding_token,
+                blacklisted_at=timezone.now()
+            )
+        except OutstandingToken.DoesNotExist:
+            print(f"Error: Token not found in OutstandingToken table.")
+            return Response({"detail": "Token not found in OutstandingToken table."}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            print(f"Error blacklisting token: {str(e)}")
+            return Response({"detail": "Error blacklisting token.", "info": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 class FunnyAPIView(APIView):
     """
     A view that provides various types of funny content.
@@ -557,12 +579,12 @@ class UserCreateView(APIView):
                 return Response({"detail": "User is already active."}, status=status.HTTP_400_BAD_REQUEST)
             
            
-            user.is_active = True
-            user.email_verified = True
-            user.status = UserStatus.ACTIVE
-            user.save()
+            # user.is_active = True
+            # user.email_verified = True
+            # user.status = UserStatus.ACTIVE
+            # user.save()
             
-            self.blacklist_token(token)
+            # self.blacklist_token(token)
 
             return Response({
                 "detail": "User activated successfully.",
@@ -597,6 +619,189 @@ class UserCreateView(APIView):
             print(f"Error blacklisting token: {str(e)}")
             return Response({"detail": "Error blacklisting token.", "info": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
+class UpdateEmailView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_summary="Update user email",
+        operation_description="Updates user email and sends verification link",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'email': openapi.Schema(
+                    type=openapi.TYPE_STRING, 
+                    description="New email address"
+                ),
+            }
+        ),
+        responses={
+            200: "Email update initiated successfully",
+            400: "Invalid email",
+            409: "Email already in use",
+        },
+        tags=["Auth", "users"]
+    )
+    
+    def put(self, request):
+        serializer = EmailUpdateSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            new_email = serializer.validated_data['email'].lower()
+            user = request.user
+
+            # Check if email is already in use
+            # if User.objects.filter(email__iexact=new_email).exclude(id=user.id).exists():
+            #     return Response(
+            #         {"detail": "Email already in use."},
+            #         status=status.HTTP_409_CONFLICT
+            #     )
+
+            if User.objects.filter(email=new_email).exists():
+                return Response(
+                    {'detail': 'Email is already in use'}, 
+                    status=status.HTTP_409_CONFLICT
+                )
+
+            try:
+                # Generate verification token
+                # token = default_token_generator.make_token(user)
+                # uid = urlsafe_base64_encode(force_bytes(user.pk))
+                
+                verification_url = generate_activation_url(user)
+                
+                # Create verification URL
+                # verification_url = f"{settings.FRONTEND_URL}/verify-email/{uid}/{token}"
+                
+                # Store the new email temporarily
+                old_email = user.email
+                # You might want to create a separate model for pending email changes
+                user.email = new_email
+                user.email_verified = False  # Assuming you have this field
+                user.status = UserStatus.PENDING
+                user.save()
+                
+                try:                
+                    # send_email_verification(user, new_email, context)     
+                    send_email_verification(user, verification_url, new_email)
+               
+                except Exception as e:
+                    # Rollback email change if sending fails
+                    user.email = old_email
+                    user.save()
+                    return Response({
+                        "detail": "Failed to send verification email.",
+                        "error": str(e)
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+                return Response({
+                    "message": "Email update initiated. Please check your new email for verification.",
+                    "email": new_email
+                }, status=status.HTTP_200_OK)
+
+            except Exception as e:
+                user.email = old_email
+                user.save()
+                return Response({
+                    "detail": "Failed to process email update.",
+                    "error": str(e)
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class UpdateEmailView2(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    # Define the request body schema for Swagger
+    email_request_schema = openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=['email'],
+        properties={
+            'email': openapi.Schema(
+                type=openapi.TYPE_STRING,
+                format=openapi.FORMAT_EMAIL,
+                description='New email address'
+            )
+        }
+    )
+
+    @swagger_auto_schema(
+        operation_summary="Update user email",
+        operation_description="Updates the user's email address and sends a verification link.",
+        request_body=email_request_schema,
+        responses={
+            200: openapi.Response(
+                description="Email updated successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'message': openapi.Schema(type=openapi.TYPE_STRING),
+                        'email': openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            ),
+            400: "Invalid email or email already in use",
+            401: "Unauthorized",
+            422: "Validation error"
+        },
+        tags=["Auth"]
+    )
+    
+    def put(self, request, *args, **kwargs):
+        new_email = request.data.get('email')
+        user = request.user
+
+        # Validate email format
+        if not new_email:
+            return Response(
+                {'error': 'Email is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if email is already in use
+        if User.objects.filter(email=new_email).exclude(id=user.id).exists():
+            return Response(
+                {'error': 'Email is already in use'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Store the old email for verification purposes
+            old_email = user.email
+            
+            # Update user's email
+            user.email = new_email
+            user.email_verified = False  # Assuming you have this field
+            user.save()
+
+            # Send verification email
+            verification_link = f"https://yoursite.com/verify-email/{generate_token(user)}"
+            send_mail(
+                subject="Verify Your New Email",
+                message=f"Please click the following link to verify your email: {verification_link}",
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[new_email],
+                fail_silently=False,
+            )
+
+            return Response({
+                'message': 'Email updated successfully. Please check your new email for verification.',
+                'email': new_email
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            # Log the error here
+            return Response(
+                {'error': 'Failed to update email. Please try again.'}, 
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY
+            )
+
+    def generate_token(user):
+        """Generate a secure token for email verification"""
+        # You can use Django's default token generator or create your own
+        from django.contrib.auth.tokens import default_token_generator
+        return default_token_generator.make_token(user)
+    
+
 class UserProfileView(RetrieveAPIView):
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]

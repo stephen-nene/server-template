@@ -28,7 +28,6 @@ def send_custom_email(to_email, subject, template_name, context):
     )
     email.attach_alternative(html_content, "text/html")  
     email.send()
-    
 def send_welcome_email(user, activation_url):
     subject = "Welcome to Django server template!"
     to_email = user.email
@@ -59,6 +58,34 @@ def confirm_account_activation(user):
      # Send email in a separate thread
     email_thread = threading.Thread(target=send_email_async, args=(email,))
     email_thread.start()
+    # send_email_verification(user, new_email, context)    
+    
+def send_email_verification(user, verification_url,new_email=None):
+    # user has just chnaged their email
+    subject = "Email Change Verification"
+    to_email = user.email
+    
+    context = {
+        "user": user,
+        "verification_url": verification_url,
+        "new_email": new_email or user.email
+    }
+
+    html_content = render_to_string("emails/email_verification.html", context)
+    email = EmailMultiAlternatives(
+        subject=subject,
+        body=html_content,
+        from_email=settings.EMAIL_HOST_USER,
+        to=[to_email]
+    )
+    
+    # Send the email
+    email.attach_alternative(html_content, "text/html")
+    # Send email in a separate thread
+    email_thread = threading.Thread(target=send_email_async, args=(email,))
+    email_thread.start()
+    # email.send()
+    
     
 def send_password_reset_email(user, url):
     subject = "Reset Your Password"

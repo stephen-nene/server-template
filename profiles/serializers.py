@@ -3,6 +3,13 @@ from django.contrib.auth.hashers import make_password
 from django.core.validators import RegexValidator
 from .models import *
 
+class EmailUpdateSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        if not value:
+            raise serializers.ValidationError("Email is required.")
+        return value.lower()
 
 class UserSerializer2(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
@@ -38,6 +45,13 @@ class UserSerializer2(serializers.ModelSerializer):
         phone_validator(value)
         return value
 
+    # class EmailUpdateSerializer(serializers.Serializer):
+    # email = serializers.EmailField()
+    def validate_email(self, value):
+        if not value:
+            raise serializers.ValidationError("Email is required.")
+        return value.lower()
+    
     def validate_role(self, value):
         allowed_roles = [choice[0] for choice in UserRole.choices]
         if value not in allowed_roles:
