@@ -34,6 +34,7 @@ urlpatterns = [
 
     # path('auth/forgot', ForgotPasswordView.as_view(), name='forgot_password'),
     # path('auth/reset', ResetPasswordView.as_view(), name='reset_password'),
+    path('auth/password-reset', PasswordResetView.as_view(), name='password_reset'),
     
     # Logout
 

@@ -13,24 +13,20 @@ RUN apt-get update && apt-get install -y build-essential libpq-dev && rm -rf /va
 # Install uv
 RUN pip install --upgrade pip && pip install uv
 
-# Create and activate a virtual environment
-RUN python -m venv .venv
-
-# Set environment variables for the virtual environment
-ENV VIRTUAL_ENV=/app/.venv
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-
-# Copy dependency files
+# Copy dependency files first (to cache this layer)
 COPY pyproject.toml uv.lock ./
 
-# Install Python dependencies with uv (using the activated venv)
-RUN . .venv/bin/activate && uv pip install -r <(uv pip compile pyproject.toml)
+# Install Python dependencies directly (no virtual env needed in container)
+RUN uv pip install --no-cache-dir -e .
 
-# Copy project files
+# Verify Django is installed
+RUN python -c "import django; print(f'Django version: {django.__version__}')"
+
+# Copy the rest of the project
 COPY . .
 
 # Expose port
 EXPOSE 8000
 
-# Run migrations and start server (using the activated venv)
-CMD ["/bin/bash", "-c", ". .venv/bin/activate && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"]
+# Run migrations and start server
+CMD ["bash", "-c", "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"]

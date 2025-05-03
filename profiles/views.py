@@ -21,7 +21,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.generics import RetrieveAPIView
 
-from .services.emails import send_login_notification,send_welcome_email,send_email_verification
+from .services.emails import send_login_notification,send_welcome_email,send_email_verification,send_password_reset_email
 
 
 from drf_yasg.utils import swagger_auto_schema
@@ -815,6 +815,236 @@ class UpdateEmailView2(APIView):
         return default_token_generator.make_token(user)
     
 
+class PasswordResetView(APIView):
+    permission_classes = [AllowAny]
+    
+    @swagger_auto_schema(
+        operation_summary="Request password reset",
+        operation_description="Sends a password reset link to the user's email.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'email': openapi.Schema(
+                    type=openapi.TYPE_STRING, 
+                    description="User's email address"
+                ),
+            },
+            required=['email']
+        ),
+        responses={
+            200: openapi.Response(
+                description="Password reset email sent successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'detail': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description="Success message"
+                        )
+                    }
+                )
+            ),
+            400: "Invalid email",
+            404: "User not found"
+        },
+        tags=["Auth"]
+    )
+    def post(self, request):
+        """Handle forgot password request"""
+        email = request.data.get('email')
+        
+        if not email:
+            return Response(
+                {"detail": "Email is required."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            user = User.objects.get(email__iexact=email)
+            
+            # Generate password reset token
+            reset_token = generate_password_reset_token(user)
+            reset_url = generate_reset_url(reset_token)
+            
+            # Send reset email
+            try:
+                send_password_reset_email(user, reset_url)
+            except Exception as e:
+                return Response({
+                    "detail": "Failed to send reset email.",
+                    "error": str(e)
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+            return Response({
+                "detail": "Password reset instructions sent to your email."
+            }, status=status.HTTP_200_OK)
+            
+        except User.DoesNotExist:
+            # For security reasons, don't reveal if email exists
+            return Response({
+                "detail": "If an account exists with this email, you will receive password reset instructions."
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                "detail": str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @swagger_auto_schema(
+        operation_summary="Reset password",
+        operation_description="Resets user's password using the reset token.",
+        manual_parameters=[
+            openapi.Parameter(
+                'token',
+                openapi.IN_QUERY,
+                description="Password reset token",
+                type=openapi.TYPE_STRING,
+                required=True
+            )
+        ],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'password': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="New password"
+                ),
+                'confirm_password': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="Confirm new password"
+                )
+            },
+            required=['new_password', 'confirm_password']
+        ),
+        responses={
+            200: openapi.Response(
+                description="Password reset successful",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'detail': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description="Success message"
+                        )
+                    }
+                )
+            ),
+            400: "Invalid token or password mismatch",
+            404: "User not found"
+        },
+        tags=["Auth"]
+    )
+    def put(self, request):
+        """Handle password reset"""
+        token = request.query_params.get('token')
+        new_password = request.data.get('password')
+        confirm_password = request.data.get('confirm_password')
+        
+        if not token:
+            return Response({
+                "detail": "Reset token is required."
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        if not new_password or not confirm_password:
+            return Response({
+                "detail": "Both new password and confirm password are required."
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        if new_password != confirm_password:
+            return Response({
+                "detail": "Passwords do not match."
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            # Decode and verify token
+            payload = jwt.decode(
+                token, 
+                settings.SECRET_KEY, 
+                algorithms=[settings.SIMPLE_JWT["ALGORITHM"]]
+            )
+            
+            user_id = payload.get('user_id')
+            if user_id is None:
+                return Response({
+                    "detail": "Invalid token payload."
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+            user = get_object_or_404(User, id=user_id)
+            
+            # Check if token is expired
+            exp = payload.get('exp')
+            if exp and timezone.now().timestamp() > exp:
+                return Response({
+                    "detail": "Reset token has expired."
+                }, status=status.HTTP_400_BAD_REQUEST)
+            from django.contrib.auth.password_validation import validate_password
+
+            # Validate password
+            try:
+                validate_password(new_password, user)
+            except Exception as e:
+                return Response({
+                    "detail": str(e)
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+            # Set new password
+            user.set_password(new_password)
+            user.save()
+            
+            # Blacklist the reset token
+            self.blacklist_token(token)
+            
+            return Response({
+                "detail": "Password reset successful."
+            }, status=status.HTTP_200_OK)
+            
+        except jwt.ExpiredSignatureError:
+            return Response({
+                "detail": "Reset token has expired."
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except jwt.DecodeError:
+            return Response({
+                "detail": "Invalid reset token."
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                "detail": str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def blacklist_token(self, token):
+        """Blacklist the token after password reset"""
+        try:
+            untoken = UntypedToken(token)
+            outstanding_token = OutstandingToken.objects.get(token=untoken)
+            BlacklistedToken.objects.create(
+                token=outstanding_token,
+                blacklisted_at=timezone.now()
+            )
+        except OutstandingToken.DoesNotExist:
+            print(f"Error: Token not found in OutstandingToken table.")
+        except Exception as e:
+            print(f"Error blacklisting token: {str(e)}")
+
+# Helper functions
+def generate_password_reset_token(user):
+    """Generate JWT token for password reset"""
+    payload = {
+        'user_id': user.id,
+        'exp': timezone.now() + timezone.timedelta(hours=24),  # 24 hour expiry
+        'type': 'password_reset'
+    }
+    return jwt.encode(
+        payload,
+        settings.SECRET_KEY,
+        algorithm=settings.SIMPLE_JWT["ALGORITHM"]
+    )
+
+def generate_reset_url(token):
+    """Generate password reset URL"""
+    frontend_url = settings.FRONTEND_URL
+    return f"{frontend_url}/reset-password?token={token}"
+
+    
+    
 class UserProfileView(RetrieveAPIView):
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
