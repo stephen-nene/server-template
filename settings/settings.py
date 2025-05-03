@@ -124,14 +124,16 @@ CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:1420", 
-    'https://stevenene.vercel.com'   
+    'https://stevenene.vercel.com',
+    'https://frontend-template-pi.vercel.app' 
 ]
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:1420",
-    'https://stevenene.vercel.com'  
+    'https://stevenene.vercel.com',
+    'https://frontend-template-pi.vercel.app'
 ]
-ALLOWED_HOSTS = ['stevenene.vercel.com', "localhost", "127.0.0.1"]
+ALLOWED_HOSTS = ['stevenene.vercel.com','frontend-template-pi.vercel.app' ,"localhost", "127.0.0.1"]
 
 
 
