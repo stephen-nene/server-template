@@ -1,4 +1,5 @@
 from django.shortcuts import render,get_object_or_404
+from django.db import IntegrityError
 from .models import User
 from .serializers import *
 from django.views import View
@@ -47,7 +48,7 @@ from django.utils.encoding import force_bytes
 def generate_activation_url(user,type='activation'):
     payload = {
         'user_id': user.id,
-        'exp': datetime.now() + timedelta(hours=24),
+        'exp': datetime.now() + timedelta(seconds=50),
         'type': type,
         'jti': str(user.id) + "_activation"  # Include a custom `jti` here (can be anything unique)
 
@@ -278,7 +279,13 @@ class CustomeTokenBlacklistView(TokenBlacklistView):
         tags=["Auth"]
     )
     def post(self, request, *args, **kwargs):
-        return super().post(request, *args, **kwargs)
+        try:
+            return super().post(request, *args, **kwargs)
+        except TokenError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except IntegrityError as e:
+            return Response({"detail": "Database integrity error: " + str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 # Login
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -568,23 +575,29 @@ class UserCreateView(APIView):
         if not token:
             return Response({"detail": "Activation Token is required."}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            payload  = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+            payload  = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.SIMPLE_JWT["ALGORITHM"]])
 
             user_id = payload.get('user_id')
             if user_id is None:
                 return Response({"detail": "Invalid token payload."}, status=status.HTTP_400_BAD_REQUEST)
             user = get_object_or_404(User, id=user_id)
             
-            if user.email_verified:
+            # if user.email_verified:
+            # blacklist_token(token)
+            if user.status == UserStatus.ACTIVE:
+                return Response({
+                        "detail": "User activated successfully.",
+                        "user": UserSerializer(user).data
+                    }, status=status.HTTP_200_OK)
                 return Response({"detail": "User is already active."}, status=status.HTTP_400_BAD_REQUEST)
+            # print(user)
             
            
-            # user.is_active = True
-            # user.email_verified = True
-            # user.status = UserStatus.ACTIVE
-            # user.save()
+            user.is_active = True
+            user.email_verified = True
+            user.status = UserStatus.ACTIVE
+            user.save()
             
-            # self.blacklist_token(token)
 
             return Response({
                 "detail": "User activated successfully.",
@@ -686,8 +699,8 @@ class UpdateEmailView(APIView):
                
                 except Exception as e:
                     # Rollback email change if sending fails
-                    user.email = old_email
-                    user.save()
+                    # user.email = old_email
+                    # user.save()
                     return Response({
                         "detail": "Failed to send verification email.",
                         "error": str(e)
@@ -699,8 +712,8 @@ class UpdateEmailView(APIView):
                 }, status=status.HTTP_200_OK)
 
             except Exception as e:
-                user.email = old_email
-                user.save()
+                # user.email = old_email
+                # user.save()
                 return Response({
                     "detail": "Failed to process email update.",
                     "error": str(e)

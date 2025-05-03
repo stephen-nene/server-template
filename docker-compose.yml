@@ -1,11 +1,11 @@
-version: '3.8'
+# version: '3.8'
 
 services:
   dev:
     build:
       context: .
       dockerfile: Dockerfile
-    command: sh -c "python manage.py makemigrations && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    command: sh -c ". .venv/bin/activate python manage.py makemigrations && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
     volumes:
       - .:/app
     ports:
@@ -22,8 +22,10 @@ services:
       - .:/app
     ports:
       - "8000:8000"
-    environment:
-      - DJANGO_SETTINGS_MODULE=your_project.settings.prod
+    env_file:
+      - .env
+    # environment:
+    #   - DJANGO_SETTINGS_MODULE=your_project.settings.prod
     depends_on:
       - db
 

@@ -45,6 +45,7 @@ SIMPLE_JWT = {
     "RESET_TOKEN_LIFETIME": timedelta(minutes=10),
     "ROTATE_REFRESH_TOKENS": True,  # Rotates refresh tokens upon refresh
     "BLACKLIST_AFTER_ROTATION": True,
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
     "ALGORITHM": "HS256",
     "SIGNING_KEY": SECRET_KEY,
     "VERIFYING_KEY": None,     
