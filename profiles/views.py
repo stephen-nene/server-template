@@ -484,7 +484,7 @@ class UserCreateView(APIView):
     permission_classes = [AllowAny]
     
     @swagger_auto_schema(
-        operation_summary="Create a new user",
+        operation_summary="Register a new user",
         operation_description="Creates a new user with the provided information.",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
@@ -503,7 +503,7 @@ class UserCreateView(APIView):
             400: "Invalid data"
             
         },
-        tags=["Auth",'users']
+        tags=["Auth"]
     )
     
     def post(self, request):
@@ -652,7 +652,7 @@ class UpdateEmailView(APIView):
             400: "Invalid email",
             409: "Email already in use",
         },
-        tags=["Auth", "users"]
+        tags=["Auth",]
     )
     
     def put(self, request):
@@ -840,6 +840,32 @@ class TokenVerifyViewExtended(TokenVerifyView):
     """
     Extends TokenVerifyView to also return user data along with the token's validity.
     """
+    @swagger_auto_schema(
+        operation_summary="Verify JWT token",
+        operation_description="Verifies the provided JWT token and returns user data.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'token': openapi.Schema(type=openapi.TYPE_STRING, description="JWT token"),                
+            } 
+        ),
+        responses={
+            200: openapi.Response(
+                description="Token is valid",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'valid': openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        'user': openapi.Schema(type=openapi.TYPE_OBJECT)
+                    }
+                )
+            ),
+            400: "Invalid token",
+            401: "Unauthorized"
+        },
+        tags=["Auth"]
+        
+    )
 
     def post(self, request, *args, **kwargs):
         token = request.data.get("token")
