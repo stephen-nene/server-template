@@ -77,7 +77,7 @@ def blacklist_token( token):
                 blacklisted_at=timezone.now()
             )
         except OutstandingToken.DoesNotExist:
-            print(f"Error: Token not found in OutstandingToken table.")
+            # print(f"Error: Token not found in OutstandingToken table.")
             return Response({"detail": "Token not found in OutstandingToken table."}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             print(f"Error blacklisting token: {str(e)}")
