@@ -147,8 +147,7 @@ CSRF_TRUSTED_ORIGINS = [
     'https://frontend-template-pi.vercel.app',
     'https://server-template-n0q8.onrender.com',
 ]
-
-ALLOWED_HOSTS = ['server-template-n0q8.onrender.com','stevenene.vercel.com','frontend-template-pi.vercel.app' ,"localhost", "127.0.0.1"]
+ALLOWED_HOSTS = ['stevenene.vercel.com', "localhost", "127.0.0.1"]
 
 ROOT_URLCONF = 'settings.urls'
 
