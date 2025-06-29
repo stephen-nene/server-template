@@ -11,7 +11,7 @@ class EmailUpdateSerializer(serializers.Serializer):
             raise serializers.ValidationError("Email is required.")
         return value.lower()
 
-class UserSerializer2(serializers.ModelSerializer):
+class UserCreateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
 
     class Meta:
@@ -27,6 +27,10 @@ class UserSerializer2(serializers.ModelSerializer):
             self.validate_phone_number(validated_data['phone_number'])
             # self.validate_role(validated_data['role'])
             # self.validate_status(validated_data['status'])
+            validated_data['is_active'] = True
+            validated_data['email_verified'] = False
+            validated_data['status'] = UserStatus.PENDING
+
             validated_data['password'] = make_password(validated_data['password'])
             return super().create(validated_data)
         except Exception as e:

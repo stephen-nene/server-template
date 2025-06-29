@@ -508,44 +508,27 @@ class UserCreateView(APIView):
     )
     
     def post(self, request):
-        serializer = UserSerializer2(data=request.data)
-        if serializer.is_valid():
-            
+        serializer = UserCreateSerializer(data=request.data)
+        # if User.objects.filter(Q(email__iexact=request.data.get('email')) | Q(username__iexact=request.data.get('username'))).exists():
+        #     return Response(
+        #         {"detail": "User with this email or username already exists."},
+        #         status=status.HTTP_409_CONFLICT
+        #     )
+        serializer.is_valid(raise_exception=True)
 
-            # send a welcome email here
-            # send_activation_email(user, activation_url)
-            serializer = UserSerializer2(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            
-            # Check for existing users case-insensitively
-            # email = serializer.validated_data['email'].lower()
-            # username = serializer.validated_data['username'].lower()
-            
-            # if User.objects.filter(Q(email__iexact=email) | Q(username__iexact=username)).exists():
-            #     return Response(
-            #         {"detail": "User with this email or username already exists."},
-            #         status=status.HTTP_409_CONFLICT
-            #     )
+        user = serializer.save()
+        activation_url = generate_activation_url(user)
+        
+        try:
+            send_welcome_email(user, activation_url)
+        except Exception as e:
+            return Response({
+                "message": "User created, but email sending failed.",
+                "user": UserSerializer(user).data,
+                "error": str(e)
+            }, status=status.HTTP_201_CREATED)
 
-            # Create inactive user until email verification
-            user = serializer.save(
-                is_active=True,
-                email_verified=False,
-                status=UserStatus.PENDING
-            )
-             # Attempt to send activation email
-            activation_url = generate_activation_url(user)
-            try:
-                send_welcome_email(user, activation_url)
-            except Exception as e:
-                # Log error, or return with warning
-                return Response({
-                    "message": "User created, but email sending failed.",
-                    "user": UserSerializer(user).data,
-                    "error": str(e)
-                }, status=status.HTTP_201_CREATED)
-            return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
     # will get a token in the url to activate the user account related with it
     
     @swagger_auto_schema(
