@@ -19,7 +19,6 @@ urlpatterns = [
     # path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     # path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 
-
     # Authentication routes ---------------------------
     path('auth/me', MeView.as_view(), name='me'),  # Logged-in user info route
     path('auth/login', CustomTokenObtainPairView.as_view(), name='token_obtain'),  # 

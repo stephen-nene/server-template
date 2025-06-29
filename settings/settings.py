@@ -35,9 +35,6 @@ SECRET_KEY = config('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = ["*"]
-
-
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=20),
@@ -147,7 +144,9 @@ CSRF_TRUSTED_ORIGINS = [
     'https://frontend-template-pi.vercel.app',
     'https://server-template-n0q8.onrender.com',
 ]
-ALLOWED_HOSTS = ['stevenene.vercel.com', "localhost", "127.0.0.1"]
+# ALLOWED_HOSTS = ['stevenene.vercel.com', "localhost", "127.0.0.1"]
+
+ALLOWED_HOSTS = ['server-template-n0q8.onrender.com','stevenene.vercel.com','frontend-template-pi.vercel.app' ,"localhost", "127.0.0.1",'0.0.0.0']
 
 ROOT_URLCONF = 'settings.urls'
 

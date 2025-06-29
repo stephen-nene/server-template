@@ -14,6 +14,7 @@ from rest_framework_simplejwt.tokens import RefreshToken,AccessToken,UntypedToke
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 
 from rest_framework_simplejwt.settings import api_settings
+from drf_spectacular.utils import extend_schema, extend_schema_view
 
 # from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import IsAuthenticated,AllowAny,IsAuthenticatedOrReadOnly
@@ -813,19 +814,21 @@ class UpdateEmailView2(APIView):
         # You can use Django's default token generator or create your own
         from django.contrib.auth.tokens import default_token_generator
         return default_token_generator.make_token(user)
-    
 
 class PasswordResetView(APIView):
+    """
+    View to handle password reset requests.
+    """
     permission_classes = [AllowAny]
-    
+
     @swagger_auto_schema(
         operation_summary="Request password reset",
-        operation_description="Sends a password reset link to the user's email.",
+        operation_description="Sends a pass reset link to the user's email.",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
                 'email': openapi.Schema(
-                    type=openapi.TYPE_STRING, 
+                    type=openapi.TYPE_STRING,
                     description="User's email address"
                 ),
             },
@@ -851,6 +854,7 @@ class PasswordResetView(APIView):
     )
     def post(self, request):
         """Handle forgot password request"""
+        
         email = request.data.get('email')
         
         if not email:
@@ -863,12 +867,13 @@ class PasswordResetView(APIView):
             user = User.objects.get(email__iexact=email)
             
             # Generate password reset token
-            reset_token = generate_password_reset_token(user)
-            reset_url = generate_reset_url(reset_token)
+            # reset_token = generate_password_reset_token(user)
+            reset_url = generate_reset_url(generate_password_reset_token(user))
             
             # Send reset email
             try:
                 send_password_reset_email(user, reset_url)
+                # print(user, reset_url)
             except Exception as e:
                 return Response({
                     "detail": "Failed to send reset email.",
@@ -943,17 +948,17 @@ class PasswordResetView(APIView):
             return Response({
                 "detail": "Reset token is required."
             }, status=status.HTTP_400_BAD_REQUEST)
-            
+    
         if not new_password or not confirm_password:
             return Response({
                 "detail": "Both new password and confirm password are required."
             }, status=status.HTTP_400_BAD_REQUEST)
-            
+           
         if new_password != confirm_password:
             return Response({
                 "detail": "Passwords do not match."
             }, status=status.HTTP_400_BAD_REQUEST)
-            
+           
         try:
             # Decode and verify token
             payload = jwt.decode(
@@ -977,13 +982,14 @@ class PasswordResetView(APIView):
                     "detail": "Reset token has expired."
                 }, status=status.HTTP_400_BAD_REQUEST)
             from django.contrib.auth.password_validation import validate_password
+            from django.core.exceptions import ValidationError
 
             # Validate password
             try:
                 validate_password(new_password, user)
-            except Exception as e:
+            except ValidationError as e:
                 return Response({
-                    "detail": str(e)
+                    "detail": e.messages
                 }, status=status.HTTP_400_BAD_REQUEST)
                 
             # Set new password
@@ -1140,8 +1146,14 @@ class TokenVerifyViewExtended(TokenVerifyView):
         except User.DoesNotExist:
             return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-
-
+@extend_schema_view(
+    list=extend_schema(summary="List all users", responses=UserSerializer(many=True), tags=["users"]),
+    retrieve=extend_schema(summary="Retrieve a user", responses=UserSerializer, tags=["users"]),
+    create=extend_schema(summary="Create a new user", responses=UserSerializer, tags=["users"]),
+    update=extend_schema(summary="Update a user", responses=UserSerializer, tags=["users"]),
+    partial_update=extend_schema(summary="Partially update a user", responses=UserSerializer, tags=["users"]),
+    destroy=extend_schema(summary="Delete a user", responses=None, tags=["users"]),
+)
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -1156,87 +1168,3 @@ class UserViewSet(viewsets.ModelViewSet):
     """
     queryset = User.objects.all().order_by('-created_at')
     serializer_class = UserSerializer
-
-    # -------------------------
-    # 🟩 LIST
-    # -------------------------
-    @swagger_auto_schema(
-        operation_summary="List all users.",
-        responses={200: UserSerializer(many=True)},
-        tags=["users"]
-    )
-    def list(self, request, *args, **kwargs):
-        """
-        List all users.
-        """
-        return super().list(request, *args, **kwargs)
-
-    # -------------------------
-    # 🟩 RETRIEVE
-    # -------------------------
-    @swagger_auto_schema(
-        operation_summary="Retrieve a user.",
-        responses={200: UserSerializer()},
-        tags=["users"]
-    )
-    def retrieve(self, request, *args, **kwargs):
-        """
-        Retrieve a specific user by ID.
-        """
-        return super().retrieve(request, *args, **kwargs)
-
-    # -------------------------
-    # 🟩 CREATE
-    # -------------------------
-    @swagger_auto_schema(
-        operation_summary="Create a new user.",
-        responses={201: UserSerializer()},
-        tags=["users"]
-    )
-    def create(self, request, *args, **kwargs):
-        """
-        Create a new user.
-        """
-        return super().create(request, *args, **kwargs)
-
-    # -------------------------
-    # 🟩 UPDATE
-    # -------------------------
-    @swagger_auto_schema(
-        operation_summary="Update a user.",
-        responses={200: UserSerializer()},
-        tags=["users"]
-    )
-    def update(self, request, *args, **kwargs):
-        """
-        Fully update a user.
-        """
-        return super().update(request, *args, **kwargs)
-
-    # -------------------------
-    # 🟫 PARTIAL UPDATE (PATCH)
-    # -------------------------
-    @swagger_auto_schema(
-        operation_summary="Partially update a user.",
-        responses={200: UserSerializer()},
-        tags=["users"]
-    )
-    def partial_update(self, request, *args, **kwargs):
-        """
-        Partially update a user.
-        """
-        return super().partial_update(request, *args, **kwargs)
-
-    # -------------------------
-    # 🟩 DESTROY
-    # -------------------------
-    @swagger_auto_schema(
-        operation_summary="Delete a user.",
-        responses={204: "No content"},
-        tags=["users"]
-    )
-    def destroy(self, request, *args, **kwargs):
-        """
-        Delete a user.
-        """
-        return super().destroy(request, *args, **kwargs)
