@@ -76,7 +76,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'drf_yasg',
     'profiles',
-    'schema_viewer',   
+    'schema_viewer',  
 ]
 
 MIDDLEWARE = [

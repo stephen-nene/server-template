@@ -11,11 +11,11 @@ router.register(r'users', UserViewSet, basename='user')
 
 urlpatterns = [
     path('', include(router.urls)),
-    
+
     # Authentication routes ----------------------------
     # path('auth/me2', UserProfileView.as_view(), name='me_update'),  # Update logged-in user info route
     # path('auth/loginn', CustomLoginView.as_view(), name='login'),  # JWT login
-    
+
     # path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     # path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 
